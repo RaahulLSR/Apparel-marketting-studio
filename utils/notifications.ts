@@ -4,7 +4,7 @@ import { Order, OrderStatus } from '../types';
 /**
  * Simulates sending an email notification via SMTP.
  * In a production environment, this would call a backend API that uses 
- * process.env.SMTP_EMAIL, process.env.SMTP_PASSWORD, etc.
+ * process.env.GMAIL_USER and process.env.GMAIL_APP_PASSWORD.
  */
 export const sendNotification = (order: Order, type: 'status_update' | 'new_order' | 'revision') => {
   const subject = `[ApparelCreative] Order Update: ${order.title}`;
@@ -25,8 +25,18 @@ export const sendNotification = (order: Order, type: 'status_update' | 'new_orde
       break;
   }
 
-  console.log(`%c[SMTP SIMULATION] To: ${order.customerId}@brand.com\nSubject: ${subject}\n\n${body}`, "color: #4f46e5; font-weight: bold; border: 1px solid #4f46e5; padding: 8px; border-radius: 4px;");
+  // Implementation uses GMAIL_USER and GMAIL_APP_PASSWORD for authentication in production
+  console.log(`%c[SMTP SIMULATION] To: ${order.customerId}@brand.com\nSubject: ${subject}\nUsing Auth: ${process.env.GMAIL_USER || 'GMAIL_USER'}\n\n${body}`, "color: #4f46e5; font-weight: bold; border: 1px solid #4f46e5; padding: 8px; border-radius: 4px;");
   
   // In a real app, this would be:
-  // fetch('/api/send-email', { method: 'POST', body: JSON.stringify({ to: '...', subject, body }) });
+  // fetch('/api/send-email', { 
+  //   method: 'POST', 
+  //   headers: { 'Content-Type': 'application/json' },
+  //   body: JSON.stringify({ 
+  //     to: `${order.customerId}@brand.com`, 
+  //     subject, 
+  //     body,
+  //     auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD }
+  //   }) 
+  // });
 };

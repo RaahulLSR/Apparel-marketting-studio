@@ -1,39 +1,51 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Derived from the provided connection string host: wibenyzdzvpvwjpecmne.supabase.co
-const supabaseUrl = 'https://wibenyzdzvpvwjpecmne.supabase.co';
-// Using placeholder for anon key as it wasn't provided, 
-// but in this environment we expect it via process.env if available
-const supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || 'your-anon-key');
+// Environment variables provided by the user/system
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://wibenyzdzvpvwjpecmne.supabase.co';
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+
+if (!supabaseAnonKey) {
+  console.warn('Supabase Anon Key is missing. Please ensure VITE_SUPABASE_ANON_KEY is set in your environment.');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**
  * DATABASE SCHEMA REFERENCE (Expected Tables):
  * 
+ * users (
+ *   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+ *   email text UNIQUE NOT NULL,
+ *   password text NOT NULL,
+ *   role text NOT NULL CHECK (role IN ('ADMIN', 'CUSTOMER')),
+ *   name text NOT NULL,
+ *   created_at timestamptz DEFAULT now()
+ * )
+ * 
  * brands (
- *   id uuid primary key default uuid_generate_v4(),
- *   customer_id text not null,
- *   name text not null,
+ *   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+ *   customer_id uuid REFERENCES public.users(id) ON DELETE CASCADE,
+ *   name text NOT NULL,
  *   logo_url text,
  *   tagline text,
  *   description text,
  *   color_palette text[],
- *   is_primary boolean default false,
- *   reference_assets text[]
+ *   is_primary boolean DEFAULT false,
+ *   reference_assets text[],
+ *   created_at timestamptz DEFAULT now()
  * )
  * 
  * orders (
- *   id uuid primary key default uuid_generate_v4(),
- *   customer_id text not null,
- *   brand_id uuid references brands(id),
- *   title text not null,
+ *   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+ *   customer_id uuid REFERENCES public.users(id) ON DELETE CASCADE,
+ *   brand_id uuid REFERENCES public.brands(id) ON DELETE SET NULL,
+ *   title text NOT NULL,
  *   description text,
  *   creative_expectations text,
- *   status text default 'Pending',
- *   created_at timestamptz default now(),
- *   updated_at timestamptz default now(),
+ *   status text DEFAULT 'Pending',
+ *   created_at timestamptz DEFAULT now(),
+ *   updated_at timestamptz DEFAULT now(),
  *   colors text,
  *   sizes text,
  *   features text,
@@ -44,11 +56,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
  * )
  * 
  * attachments (
- *   id uuid primary key default uuid_generate_v4(),
- *   order_id uuid references orders(id),
+ *   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+ *   order_id uuid REFERENCES public.orders(id) ON DELETE CASCADE,
  *   name text,
  *   url text,
- *   type text,
- *   created_at timestamptz default now()
+ *   type text, -- 'image', 'document', 'result'
+ *   created_at timestamptz DEFAULT now()
  * )
  */
