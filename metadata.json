@@ -1,0 +1,7 @@
+{
+  "name": "ApparelCreative Hub",
+  "description": "A comprehensive order management platform for apparel marketing and creative services, featuring distinct Admin and Customer workflows with brand-level organization.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
