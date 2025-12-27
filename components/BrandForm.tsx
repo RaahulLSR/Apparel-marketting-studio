@@ -4,7 +4,7 @@ import { Brand } from '../types';
 
 interface Props {
   onClose: () => void;
-  onSubmit: (brand: Brand) => void;
+  onSubmit: (brand: Partial<Brand>) => void;
   customerId: string;
 }
 
@@ -20,15 +20,13 @@ const BrandForm: React.FC<Props> = ({ onClose, onSubmit, customerId }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newBrand: Brand = {
-      id: Math.random().toString(36).substr(2, 9),
+    const newBrand: Partial<Brand> = {
       customerId,
       name: formData.name,
       tagline: formData.tagline,
       description: formData.description,
       isPrimary: formData.isPrimary,
       colorPalette: [formData.color1, formData.color2],
-      referenceAssets: []
     };
     onSubmit(newBrand);
   };

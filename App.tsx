@@ -5,7 +5,6 @@ import { LOGO_ICON } from './constants';
 import AdminDashboard from './components/AdminDashboard';
 import CustomerDashboard from './components/CustomerDashboard';
 import Auth from './components/Auth';
-import { sendNotification } from './utils/notifications';
 import { supabase } from './lib/supabase';
 
 const App: React.FC = () => {
@@ -23,26 +22,57 @@ const App: React.FC = () => {
         ? supabase.from('brands').select('*')
         : supabase.from('brands').select('*').eq('customer_id', user.id);
       
-      const { data: brandData } = await brandQuery;
-      if (brandData) setBrands(brandData as any);
+      const { data: brandData, error: brandError } = await brandQuery;
+      if (brandError) throw brandError;
+      
+      if (brandData) {
+        setBrands(brandData.map(b => ({
+          id: b.id,
+          customerId: b.customer_id,
+          name: b.name,
+          logoUrl: b.logo_url,
+          tagline: b.tagline,
+          description: b.description,
+          colorPalette: b.color_palette || [],
+          isPrimary: b.is_primary,
+          referenceAssets: b.reference_assets || []
+        })));
+      }
 
       // Fetch Orders with nested attachments
       const orderQuery = user.role === UserRole.ADMIN
-        ? supabase.from('orders').select('*, result_files:attachments(*)')
-        : supabase.from('orders').select('*, result_files:attachments(*)').eq('customer_id', user.id);
+        ? supabase.from('orders').select('*, attachments(*)')
+        : supabase.from('orders').select('*, attachments(*)').eq('customer_id', user.id);
       
-      const { data: orderData } = await orderQuery;
+      const { data: orderData, error: orderError } = await orderQuery;
+      if (orderError) throw orderError;
+
       if (orderData) {
-        // Map snake_case from DB to camelCase for the UI types
-        const mappedOrders = (orderData as any[]).map(o => ({
-          ...o,
+        const mappedOrders: Order[] = (orderData as any[]).map(o => ({
+          id: o.id,
           customerId: o.customer_id,
           brandId: o.brand_id,
+          title: o.title,
+          description: o.description,
           creativeExpectations: o.creative_expectations,
-          targetAudience: o.target_audience,
+          status: o.status as OrderStatus,
           createdAt: o.created_at,
           updatedAt: o.updated_at,
-          adminNotes: o.admin_notes
+          colors: o.colors,
+          sizes: o.sizes,
+          features: o.features,
+          targetAudience: o.target_audience,
+          usage: o.usage,
+          notes: o.notes,
+          adminNotes: o.admin_notes,
+          resultFiles: (o.attachments || []).map((a: any) => ({
+            id: a.id,
+            orderId: a.order_id,
+            name: a.name,
+            url: a.url,
+            type: a.type,
+            createdAt: a.created_at
+          }))
         }));
         setOrders(mappedOrders);
       }
@@ -51,6 +81,36 @@ const App: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper to upload files to Supabase Storage
+  const uploadFiles = async (files: File[], orderId: string, type: 'image' | 'document' | 'result'): Promise<void> => {
+    const uploadPromises = files.map(async (file) => {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${orderId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `attachments/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('attachments')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('attachments')
+        .getPublicUrl(fileName);
+
+      const { error: dbError } = await supabase.from('attachments').insert([{
+        order_id: orderId,
+        name: file.name,
+        url: publicUrl,
+        type: type
+      }]);
+
+      if (dbError) throw dbError;
+    });
+
+    await Promise.all(uploadPromises);
   };
 
   // Subscribe to real-time updates
@@ -82,14 +142,14 @@ const App: React.FC = () => {
     setBrands([]);
   };
 
-  const addOrder = async (newOrder: Order) => {
+  const addOrder = async (newOrder: Partial<Order> & { files?: File[] }) => {
     const { data, error } = await supabase.from('orders').insert([{
       customer_id: newOrder.customerId,
       brand_id: newOrder.brandId,
       title: newOrder.title,
       description: newOrder.description,
       creative_expectations: newOrder.creativeExpectations,
-      status: newOrder.status,
+      status: OrderStatus.PENDING,
       colors: newOrder.colors,
       sizes: newOrder.sizes,
       features: newOrder.features,
@@ -98,40 +158,46 @@ const App: React.FC = () => {
       notes: newOrder.notes
     }]).select().single();
 
-    if (!error && data) {
-      sendNotification(data as any, 'new_order');
+    if (error) {
+      console.error('Error adding order:', error);
+      alert('Failed to create order. Please try again.');
+    } else if (data && newOrder.files && newOrder.files.length > 0) {
+      try {
+        await uploadFiles(newOrder.files, data.id, 'document');
+        fetchData(currentUser!);
+      } catch (uploadError) {
+        console.error('Error uploading files:', uploadError);
+        alert('Order created, but file upload failed.');
+      }
+    } else {
       fetchData(currentUser!);
     }
   };
 
-  const updateOrderStatus = async (orderId: string, status: OrderStatus, adminNotes?: string, newResultFiles?: Attachment[]) => {
+  const updateOrderStatus = async (orderId: string, status: OrderStatus, adminNotes?: string, newFiles?: File[]) => {
     const { error } = await supabase.from('orders').update({
       status,
       admin_notes: adminNotes,
       updated_at: new Date().toISOString()
     }).eq('id', orderId);
 
-    if (newResultFiles && newResultFiles.length > 0) {
-      await supabase.from('attachments').insert(
-        newResultFiles.map(file => ({
-          order_id: orderId,
-          name: file.name,
-          url: file.url,
-          type: 'result'
-        }))
-      );
+    if (error) {
+      console.error('Error updating status:', error);
+      return;
     }
 
-    if (!error) {
-      const order = orders.find(o => o.id === orderId);
-      if (order) {
-        sendNotification({ ...order, status, adminNotes }, status === OrderStatus.REVISIONS_REQUESTED ? 'revision' : 'status_update');
+    if (newFiles && newFiles.length > 0) {
+      try {
+        await uploadFiles(newFiles, orderId, 'result');
+      } catch (uploadError) {
+        console.error('Error uploading result files:', uploadError);
       }
-      fetchData(currentUser!);
     }
+
+    fetchData(currentUser!);
   };
 
-  const addBrand = async (newBrand: Brand) => {
+  const addBrand = async (newBrand: Partial<Brand>) => {
     const { error } = await supabase.from('brands').insert([{
       customer_id: newBrand.customerId,
       name: newBrand.name,
@@ -141,7 +207,9 @@ const App: React.FC = () => {
       is_primary: newBrand.isPrimary
     }]);
 
-    if (!error) {
+    if (error) {
+      console.error('Error adding brand:', error);
+    } else {
       fetchData(currentUser!);
     }
   };
@@ -190,8 +258,8 @@ const App: React.FC = () => {
               user={currentUser} 
               brands={brands} 
               orders={orders} 
-              addOrder={addOrder} 
-              addBrand={addBrand} 
+              addOrder={addOrder as any} 
+              addBrand={addBrand as any} 
               updateStatus={updateOrderStatus}
             />
           )

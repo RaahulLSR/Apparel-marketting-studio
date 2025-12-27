@@ -4,12 +4,13 @@ import { Brand, Order, OrderStatus } from '../types';
 
 interface Props {
   onClose: () => void;
-  onSubmit: (order: Order) => void;
+  onSubmit: (order: Partial<Order> & { files?: File[] }) => void;
   brands: Brand[];
   customerId: string;
 }
 
 const OrderForm: React.FC<Props> = ({ onClose, onSubmit, brands, customerId }) => {
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [formData, setFormData] = useState({
     brandId: brands[0]?.id || '',
     title: '',
@@ -23,15 +24,19 @@ const OrderForm: React.FC<Props> = ({ onClose, onSubmit, brands, customerId }) =
     notes: ''
   });
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setSelectedFiles(Array.from(e.target.files));
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newOrder: Order = {
+    const newOrder = {
       ...formData,
-      id: Math.random().toString(36).substr(2, 9),
       customerId,
       status: OrderStatus.PENDING,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      files: selectedFiles
     };
     onSubmit(newOrder);
   };
@@ -56,6 +61,7 @@ const OrderForm: React.FC<Props> = ({ onClose, onSubmit, brands, customerId }) =
                 value={formData.brandId}
                 onChange={(e) => setFormData({...formData, brandId: e.target.value})}
               >
+                <option value="">Select a brand...</option>
                 {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
@@ -85,15 +91,27 @@ const OrderForm: React.FC<Props> = ({ onClose, onSubmit, brands, customerId }) =
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">What should be included? (Creative Expectations)</label>
-            <textarea 
-              required
-              rows={3}
-              placeholder="Specific shots, moods, or styles you need..."
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-              value={formData.creativeExpectations}
-              onChange={(e) => setFormData({...formData, creativeExpectations: e.target.value})}
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Upload Brief / References (PDF, Images)</label>
+            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:border-indigo-400 transition-colors">
+              <div className="space-y-1 text-center">
+                <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                  <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <div className="flex text-sm text-gray-600">
+                  <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
+                    <span>Upload files</span>
+                    <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple onChange={handleFileChange} accept="image/*,.pdf" />
+                  </label>
+                  <p className="pl-1">or drag and drop</p>
+                </div>
+                <p className="text-xs text-gray-500">PNG, JPG, PDF up to 10MB each</p>
+                {selectedFiles.length > 0 && (
+                  <div className="mt-2 text-sm text-indigo-600 font-semibold">
+                    {selectedFiles.length} file(s) selected
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="bg-indigo-50 p-6 rounded-xl space-y-4">
@@ -126,47 +144,12 @@ const OrderForm: React.FC<Props> = ({ onClose, onSubmit, brands, customerId }) =
                   onChange={(e) => setFormData({...formData, targetAudience: e.target.value})}
                 />
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Usage Type</label>
-                <select 
-                  className="w-full p-2 bg-white border border-indigo-100 rounded text-sm"
-                  value={formData.usage}
-                  onChange={(e) => setFormData({...formData, usage: e.target.value})}
-                >
-                  <option value="">Select...</option>
-                  <option value="Casual">Casual</option>
-                  <option value="Sports">Sports</option>
-                  <option value="Premium">Premium</option>
-                  <option value="Industrial">Industrial</option>
-                </select>
-              </div>
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
-            <textarea 
-              rows={2}
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-              value={formData.notes}
-              onChange={(e) => setFormData({...formData, notes: e.target.value})}
-            />
-          </div>
-
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-            <button 
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2.5 text-sm font-bold text-gray-600 hover:text-gray-800"
-            >
-              Cancel
-            </button>
-            <button 
-              type="submit"
-              className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all"
-            >
-              Submit Order
-            </button>
+            <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm font-bold text-gray-600 hover:text-gray-800">Cancel</button>
+            <button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all">Submit Order</button>
           </div>
         </form>
       </div>

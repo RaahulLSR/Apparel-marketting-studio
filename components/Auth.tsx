@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { User, UserRole } from '../types';
 import { LOGO_ICON } from '../constants';
 
@@ -22,14 +22,6 @@ const Auth: React.FC<Props> = ({ onLogin }) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-
-    // Fix: Use the exported configuration check from lib/supabase.ts
-    // instead of accessing the protected 'supabaseKey' property on the client.
-    if (!isSupabaseConfigured) {
-      setError('System Error: Supabase is not properly configured. Please check environment variables.');
-      setLoading(false);
-      return;
-    }
 
     try {
       if (isLogin) {
