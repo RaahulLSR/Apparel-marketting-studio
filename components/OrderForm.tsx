@@ -40,7 +40,8 @@ const OrderForm: React.FC<Props> = ({ onClose, onSubmit, brands, customerId }) =
 
     setIsAiGenerating(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: (process.env as any).API_KEY });
+      // Accessing process.env.API_KEY directly as per environment injection rules
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const prompt = `You are a professional apparel creative director. Based on the title "${formData.title}", generate a detailed apparel description and specific creative expectations for a marketing campaign. Return only a JSON object with "description" and "expectations" keys.`;
       
       const response = await ai.models.generateContent({
