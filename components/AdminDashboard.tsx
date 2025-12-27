@@ -19,6 +19,14 @@ const AdminDashboard: React.FC<Props> = ({ orders, updateStatus, brands }) => {
 
   const filteredOrders = filter === 'ALL' ? orders : orders.filter(o => o.status === filter);
 
+  // Statistics
+  const stats = {
+    total: orders.length,
+    pending: orders.filter(o => o.status === OrderStatus.PENDING).length,
+    active: orders.filter(o => [OrderStatus.IN_PROGRESS, OrderStatus.REVISIONS_REQUESTED].includes(o.status)).length,
+    completed: orders.filter(o => o.status === OrderStatus.COMPLETED).length
+  };
+
   const handleUpdate = async (status: OrderStatus) => {
     if (!selectedOrder) return;
     setIsUploading(true);
@@ -36,12 +44,11 @@ const AdminDashboard: React.FC<Props> = ({ orders, updateStatus, brands }) => {
 
     setIsDownloading(true);
     const zip = new JSZip();
-    const folderName = `${selectedOrder.title.replace(/\s+/g, '_')}_Assets`;
+    const folderName = `${selectedOrder.title.replace(/\s+/g, '_')}_Bundle`;
     const folder = zip.folder(folderName);
 
     const assetPromises: Promise<void>[] = [];
 
-    // Helper to fetch and add to zip
     const addToZip = async (url: string, name: string, subfolder: string) => {
       try {
         const response = await fetch(url);
@@ -52,21 +59,18 @@ const AdminDashboard: React.FC<Props> = ({ orders, updateStatus, brands }) => {
       }
     };
 
-    // 1. Add Order Attachments (Briefs & Documents)
     selectedOrder.resultFiles?.forEach((file, index) => {
-      const category = file.type === 'result' ? 'Admin_Results' : 'Customer_Briefs';
+      const category = file.type === 'result' ? 'Admin_Finals' : 'Client_Briefs';
       assetPromises.push(addToZip(file.url, file.name || `file_${index}`, category));
     });
 
-    // 2. Add Brand Reference Assets
     brand.referenceAssets?.forEach((url, index) => {
-      const fileName = url.split('/').pop() || `brand_asset_${index}`;
-      assetPromises.push(addToZip(url, fileName, 'Brand_Identity_Assets'));
+      const fileName = url.split('/').pop() || `ref_${index}`;
+      assetPromises.push(addToZip(url, fileName, 'Brand_Identity'));
     });
 
-    // 3. Add Brand Logo if exists
     if (brand.logoUrl) {
-      assetPromises.push(addToZip(brand.logoUrl, 'brand_logo', 'Brand_Identity_Assets'));
+      assetPromises.push(addToZip(brand.logoUrl, 'logo', 'Brand_Identity'));
     }
 
     try {
@@ -76,10 +80,9 @@ const AdminDashboard: React.FC<Props> = ({ orders, updateStatus, brands }) => {
       link.href = URL.createObjectURL(content);
       link.download = `${folderName}.zip`;
       link.click();
-      URL.revokeObjectURL(link.href);
     } catch (err) {
       console.error('ZIP generation failed:', err);
-      alert('Failed to generate ZIP. Some files might be inaccessible.');
+      alert('Asset bundling failed.');
     } finally {
       setIsDownloading(false);
     }
@@ -93,213 +96,216 @@ const AdminDashboard: React.FC<Props> = ({ orders, updateStatus, brands }) => {
 
   const getBrandInfo = (brandId: string) => brands.find(b => String(b.id) === String(brandId));
 
+  const getStatusStyle = (status: OrderStatus) => {
+    switch(status) {
+      case OrderStatus.COMPLETED: return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      case OrderStatus.IN_PROGRESS: return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+      case OrderStatus.PENDING: return 'bg-amber-100 text-amber-700 border-amber-200';
+      case OrderStatus.REVISIONS_REQUESTED: return 'bg-rose-100 text-rose-700 border-rose-200';
+      default: return 'bg-slate-100 text-slate-600 border-slate-200';
+    }
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Stats Header */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Projects', value: stats.total, color: 'text-slate-900', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2' },
+          { label: 'Pending Queue', value: stats.pending, color: 'text-amber-600', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+          { label: 'In Production', value: stats.active, color: 'text-indigo-600', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
+          { label: 'Completed', value: stats.completed, color: 'text-emerald-600', icon: 'M5 13l4 4L19 7' }
+        ].map((stat, i) => (
+          <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{stat.label}</span>
+              <svg className={`w-4 h-4 ${stat.color}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={stat.icon} /></svg>
+            </div>
+            <p className={`text-2xl font-bold font-heading ${stat.color}`}>{stat.value}</p>
+          </div>
+        ))}
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Admin Control Center</h1>
-          <p className="text-gray-500">Oversee and execute active creative orders across all brands.</p>
+          <h1 className="text-2xl font-bold text-slate-900 font-heading">Production Hub</h1>
+          <p className="text-sm text-slate-500">Manage creative execution for all brand partners.</p>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0">
+        <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
           {(['ALL', ...Object.values(OrderStatus)] as const).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${filter === f ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}
+              className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${filter === f ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
             >
-              {f}
+              {f === 'ALL' ? 'Show All' : f}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order / Brand</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date Created</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredOrders.map(order => {
-                const brand = getBrandInfo(order.brandId);
-                return (
-                  <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-gray-900">{order.title}</span>
-                        <span className="text-xs text-indigo-600 font-medium">{brand?.name || 'Unknown Brand'}</span>
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <table className="min-w-full divide-y divide-slate-200">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Order Details</th>
+              <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
+              <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Deadline (Rel)</th>
+              <th className="px-6 py-4 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 bg-white">
+            {filteredOrders.map(order => {
+              const brand = getBrandInfo(order.brandId);
+              return (
+                <tr key={order.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-400 text-sm group-hover:scale-110 transition-transform">
+                        {brand?.name[0]}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                        order.status === OrderStatus.COMPLETED ? 'bg-green-100 text-green-700' :
-                        order.status === OrderStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' :
-                        order.status === OrderStatus.AWAITING_FEEDBACK ? 'bg-purple-100 text-purple-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {order.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(order.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button 
-                        onClick={() => {
-                          setSelectedOrder(order);
-                          setAdminNotes(order.adminNotes || '');
-                        }}
-                        className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-3 py-1.5 rounded-md"
-                      >
-                        Manage
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      <div>
+                        <div className="text-sm font-bold text-slate-900">{order.title}</div>
+                        <div className="text-xs text-indigo-600 font-medium uppercase tracking-tight">{brand?.name}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase border ${getStatusStyle(order.status)}`}>
+                      {order.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-xs text-slate-500 font-medium">
+                    {new Date(order.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button 
+                      onClick={() => { setSelectedOrder(order); setAdminNotes(order.adminNotes || ''); }}
+                      className="inline-flex items-center text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-4 py-2 rounded-xl transition-all hover:shadow-sm"
+                    >
+                      Manage Project
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {filteredOrders.length === 0 && (
+          <div className="py-20 text-center">
+            <p className="text-slate-400 text-sm italic font-medium">No orders found matching this status.</p>
+          </div>
+        )}
       </div>
 
+      {/* Order Management Modal */}
       {selectedOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-40 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full my-8 animate-in zoom-in duration-200">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">{selectedOrder.title}</h2>
-                <p className="text-sm text-indigo-600 font-semibold">{getBrandInfo(selectedOrder.brandId)?.name}</p>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-6xl w-full my-8 animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-200">
+                  {getBrandInfo(selectedOrder.brandId)?.name[0]}
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 font-heading leading-tight">{selectedOrder.title}</h2>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-sm text-indigo-600 font-bold uppercase tracking-tight">{getBrandInfo(selectedOrder.brandId)?.name}</span>
+                    <span className="text-slate-300">•</span>
+                    <span className="text-xs text-slate-400 font-medium tracking-tight">Project ID: #{selectedOrder.id.slice(0, 8)}</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <button 
                   onClick={handleBulkDownload}
                   disabled={isDownloading}
-                  className="flex items-center px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold text-gray-700 hover:bg-gray-50 shadow-sm transition-all disabled:opacity-50"
+                  className="flex items-center px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-50"
                 >
-                  {isDownloading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-indigo-500 border-t-transparent mr-2"></div>
-                  ) : (
-                    <svg className="w-4 h-4 mr-2 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                  )}
-                  {isDownloading ? 'Bundling Assets...' : 'Download All Assets (.zip)'}
+                  {isDownloading ? <div className="animate-spin rounded-full h-3 w-3 border-2 border-indigo-500 border-t-transparent mr-2"></div> : <svg className="w-4 h-4 mr-2 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>}
+                  {isDownloading ? 'Packaging...' : 'Download All Assets'}
                 </button>
-                <button onClick={() => setSelectedOrder(null)} className="p-2 text-gray-400 hover:text-gray-600">
+                <button onClick={() => setSelectedOrder(null)} className="p-2.5 text-slate-400 hover:text-slate-600 transition-colors bg-slate-50 rounded-full">
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
             </div>
             
-            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-8 max-h-[75vh] overflow-y-auto">
-              {/* LEFT: Brief & Assets */}
-              <div className="md:col-span-1 space-y-6">
+            <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 lg:grid-cols-12 gap-10">
+              {/* LEFT: Project Brief */}
+              <div className="lg:col-span-4 space-y-8">
                 <section>
-                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Creative Brief</h4>
-                  <div className="bg-gray-50 p-4 rounded-xl">
-                    <p className="text-sm text-gray-800 leading-relaxed">{selectedOrder.description}</p>
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <p className="text-xs font-semibold text-gray-500 mb-1">Expectations:</p>
-                      <p className="text-xs text-gray-600 italic">{selectedOrder.creativeExpectations}</p>
-                    </div>
-                  </div>
-                </section>
-                
-                <section>
-                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Order Specs</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                      <span className="block text-[9px] font-bold text-gray-400 uppercase">Colors</span>
-                      <span className="text-xs font-medium text-gray-900 truncate block">{selectedOrder.colors}</span>
-                    </div>
-                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                      <span className="block text-[9px] font-bold text-gray-400 uppercase">Target</span>
-                      <span className="text-xs font-medium text-gray-900 truncate block">{selectedOrder.targetAudience}</span>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Project Briefing</label>
+                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-4 shadow-inner">
+                    <p className="text-sm text-slate-800 leading-relaxed font-medium">{selectedOrder.description}</p>
+                    <div className="pt-4 border-t border-slate-200">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Success Criteria</p>
+                      <p className="text-sm text-slate-600 italic leading-snug">"{selectedOrder.creativeExpectations}"</p>
                     </div>
                   </div>
                 </section>
 
                 <section>
-                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Brief Attachments</h4>
-                  <div className="space-y-2">
-                    {selectedOrder.resultFiles?.filter(f => f.type === 'document').map(file => (
-                      <div key={file.id} className="flex items-center justify-between p-2 bg-indigo-50/50 rounded-lg border border-indigo-100 text-[11px]">
-                        <span className="font-medium text-indigo-900 truncate mr-2">{file.name}</span>
-                        <a href={file.url} target="_blank" className="text-indigo-600 font-bold hover:underline shrink-0">View</a>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Technical Specs</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { l: 'Colors', v: selectedOrder.colors },
+                      { l: 'Target', v: selectedOrder.targetAudience },
+                      { l: 'Usage', v: selectedOrder.usage },
+                      { l: 'Sizes', v: selectedOrder.sizes }
+                    ].map((spec, i) => (
+                      <div key={i} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                        <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">{spec.l}</span>
+                        <span className="text-xs font-bold text-slate-900 truncate block">{spec.v || 'N/A'}</span>
                       </div>
                     ))}
-                    {!selectedOrder.resultFiles?.some(f => f.type === 'document') && <p className="text-xs text-gray-400">No brief assets provided.</p>}
+                  </div>
+                </section>
+
+                <section>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Input Documents</label>
+                  <div className="space-y-2">
+                    {selectedOrder.resultFiles?.filter(f => f.type === 'document').map(file => (
+                      <a key={file.id} href={file.url} target="_blank" className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-100 text-xs font-bold text-indigo-600 hover:border-indigo-200 transition-all hover:shadow-sm">
+                        <span className="truncate mr-2 text-slate-700">{file.name}</span>
+                        <span className="shrink-0 uppercase tracking-tighter">View File</span>
+                      </a>
+                    ))}
+                    {!selectedOrder.resultFiles?.some(f => f.type === 'document') && <p className="text-xs text-slate-400 italic font-medium">No files provided by client.</p>}
                   </div>
                 </section>
               </div>
 
-              {/* CENTER: Brand Identity */}
-              <div className="md:col-span-1 space-y-6 border-l border-r border-gray-100 px-4">
+              {/* CENTER: Brand Identity Context */}
+              <div className="lg:col-span-4 space-y-8 px-2">
                 {(() => {
                   const brand = getBrandInfo(selectedOrder.brandId);
-                  if (!brand) return <div className="text-gray-400 text-sm italic">Brand data not available.</div>;
+                  if (!brand) return null;
                   return (
                     <>
                       <section>
-                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Brand Identity</h4>
-                        <div className="flex items-center gap-4 mb-4">
-                          <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center border border-gray-200 overflow-hidden">
-                            {brand.logoUrl ? (
-                              <img src={brand.logoUrl} className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-xl font-bold text-gray-300">{brand.name[0]}</span>
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-gray-900">{brand.name}</p>
-                            <p className="text-[10px] text-gray-500 italic truncate w-40">{brand.tagline}</p>
-                          </div>
-                        </div>
-                        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                          <p className="text-xs text-gray-600 leading-relaxed mb-4">{brand.description}</p>
-                          <div className="space-y-3">
-                            <div>
-                              <p className="text-[9px] font-bold text-gray-400 uppercase mb-2">Color Palette</p>
-                              <div className="flex gap-2">
-                                {brand.colorPalette.map((color, i) => (
-                                  <div key={i} className="group relative">
-                                    <div className="w-8 h-8 rounded-full border border-gray-200 shadow-inner" style={{ backgroundColor: color }} />
-                                    <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[8px] bg-gray-800 text-white px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">{color}</span>
-                                  </div>
-                                ))}
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Brand Context</label>
+                        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4 shadow-sm">
+                          <p className="text-xs text-slate-600 leading-relaxed font-medium">{brand.description}</p>
+                          <div className="flex gap-2.5 pt-2">
+                            {brand.colorPalette.map((color, i) => (
+                              <div key={i} className="group relative">
+                                <div className="w-9 h-9 rounded-full border border-slate-200 shadow-inner group-hover:scale-110 transition-transform cursor-help" style={{ backgroundColor: color }} />
+                                <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-[8px] bg-slate-900 text-white px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap z-20 shadow-lg">{color}</span>
                               </div>
-                            </div>
+                            ))}
                           </div>
                         </div>
                       </section>
-
                       <section>
-                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Reference Assets</h4>
-                        <div className="grid grid-cols-2 gap-2">
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Brand Style Guides</label>
+                        <div className="grid grid-cols-2 gap-3">
                           {brand.referenceAssets?.map((url, i) => (
-                            <a 
-                              key={i} 
-                              href={url} 
-                              target="_blank" 
-                              className="block aspect-square bg-gray-50 rounded-lg border border-gray-200 overflow-hidden group relative hover:border-indigo-300 transition-all"
-                            >
-                              <img src={url} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                              </div>
+                            <a key={i} href={url} target="_blank" className="block aspect-square bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden group relative hover:border-indigo-400 transition-all">
+                              <img src={url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                              <div className="absolute inset-0 bg-slate-900/20 opacity-0 group-hover:opacity-100 transition-opacity" />
                             </a>
                           ))}
-                          {(!brand.referenceAssets || brand.referenceAssets.length === 0) && (
-                            <p className="text-[10px] text-gray-400 italic col-span-2">No references uploaded for this brand.</p>
-                          )}
                         </div>
                       </section>
                     </>
@@ -307,58 +313,48 @@ const AdminDashboard: React.FC<Props> = ({ orders, updateStatus, brands }) => {
                 })()}
               </div>
 
-              {/* RIGHT: Workflow & Upload */}
-              <div className="md:col-span-1 space-y-6">
+              {/* RIGHT: Production & Delivery */}
+              <div className="lg:col-span-4 space-y-8 bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
                 <section>
-                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Admin Workflow</h4>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Update Status</label>
-                      <div className="flex flex-wrap gap-2">
-                        {[OrderStatus.IN_PROGRESS, OrderStatus.AWAITING_FEEDBACK].map(status => (
-                          <button 
-                            key={status}
-                            onClick={() => handleUpdate(status)} 
-                            className={`px-3 py-2 text-xs rounded-lg font-bold border transition-all ${selectedOrder.status === status ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}
-                          >
-                            {status === OrderStatus.IN_PROGRESS ? 'Start Work' : 'Send for Review'}
-                          </button>
-                        ))}
-                      </div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Production Workflow</label>
+                  <div className="space-y-6">
+                    <div className="flex gap-2">
+                      {[OrderStatus.IN_PROGRESS, OrderStatus.AWAITING_FEEDBACK].map(status => (
+                        <button 
+                          key={status}
+                          onClick={() => handleUpdate(status)} 
+                          className={`flex-1 px-4 py-3 text-[10px] rounded-xl font-bold uppercase tracking-widest transition-all shadow-sm ${selectedOrder.status === status ? 'bg-indigo-600 text-white border-indigo-600 scale-105 z-10' : 'bg-white text-slate-600 border border-slate-200 hover:border-indigo-400'}`}
+                        >
+                          {status === OrderStatus.IN_PROGRESS ? 'Start Production' : 'Submit for Review'}
+                        </button>
+                      ))}
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Internal / Customer Notes</label>
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-slate-700">Project Log / Message</label>
                       <textarea 
                         value={adminNotes} 
                         onChange={(e) => setAdminNotes(e.target.value)} 
-                        placeholder="Log work or add notes for the customer..." 
-                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 min-h-[120px] transition-all" 
+                        placeholder="Detail your updates or ask client questions..." 
+                        className="w-full p-4 bg-white border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none min-h-[140px] shadow-sm resize-none" 
                       />
                     </div>
 
-                    <div className="pt-4 border-t border-gray-100">
-                      <p className="text-[10px] text-gray-400 mb-3 uppercase font-bold tracking-widest">Upload Result Assets</p>
-                      <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 hover:bg-gray-50 transition-colors group relative cursor-pointer">
-                        <input 
-                          type="file" 
-                          multiple 
-                          className="absolute inset-0 opacity-0 cursor-pointer"
-                          onChange={handleFileChange} 
-                        />
+                    <div className="pt-4 border-t border-slate-200">
+                      <label className="block text-xs font-bold text-slate-700 mb-3">Deliver Final Assets</label>
+                      <div className="border-2 border-dashed border-slate-300 rounded-2xl p-8 hover:bg-white hover:border-indigo-400 transition-all group relative cursor-pointer bg-white/50">
+                        <input type="file" multiple className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleFileChange} />
                         <div className="text-center pointer-events-none">
-                          <svg className="mx-auto h-8 w-8 text-gray-400 group-hover:text-indigo-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                          </svg>
-                          <span className="mt-2 block text-[10px] font-bold text-gray-400 uppercase group-hover:text-indigo-600 transition-colors">Select Final Files</span>
+                          <svg className="mx-auto h-10 w-10 text-slate-400 group-hover:text-indigo-600 transition-colors mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                          <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Click to Select Files</span>
                         </div>
                       </div>
                       {selectedFiles.length > 0 && (
-                        <div className="mt-3 space-y-1.5 animate-in slide-in-from-top-2">
+                        <div className="mt-4 space-y-2">
                           {selectedFiles.map((f, i) => (
-                            <div key={i} className="text-[10px] text-gray-500 bg-gray-50 p-2 rounded flex justify-between items-center border border-gray-100">
-                              <span className="truncate w-40">{f.name}</span>
-                              <button onClick={(e) => { e.stopPropagation(); setSelectedFiles(selectedFiles.filter((_, idx) => idx !== i)); }} className="text-red-500 hover:text-red-700 font-bold ml-2">Remove</button>
+                            <div key={i} className="text-[10px] text-slate-600 bg-white p-3 rounded-xl flex justify-between items-center border border-slate-100 shadow-sm animate-in slide-in-from-top-2">
+                              <span className="truncate w-40 font-bold">{f.name}</span>
+                              <button onClick={() => setSelectedFiles(selectedFiles.filter((_, idx) => idx !== i))} className="text-rose-500 hover:text-rose-700 font-black">X</button>
                             </div>
                           ))}
                         </div>
@@ -369,19 +365,15 @@ const AdminDashboard: React.FC<Props> = ({ orders, updateStatus, brands }) => {
               </div>
             </div>
 
-            <div className="p-6 bg-gray-50 border-t border-gray-100 rounded-b-2xl flex justify-end gap-3">
-              <button onClick={() => setSelectedOrder(null)} className="px-6 py-2.5 text-sm font-bold text-gray-600 hover:text-gray-800 transition-colors">Cancel</button>
+            <div className="p-8 bg-slate-50 border-t border-slate-100 shrink-0 flex justify-end gap-3">
+              <button onClick={() => setSelectedOrder(null)} className="px-8 py-3 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-widest">Close</button>
               <button 
                 onClick={() => handleUpdate(selectedOrder.status)} 
                 disabled={isUploading} 
-                className="px-8 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 disabled:opacity-50 transition-all transform active:scale-95 flex items-center"
+                className="px-10 py-3 bg-indigo-600 text-white text-sm font-bold rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-200 disabled:opacity-50 transition-all active:scale-95 uppercase tracking-widest flex items-center"
               >
-                {isUploading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></div>
-                    Uploading...
-                  </>
-                ) : 'Confirm Changes'}
+                {isUploading ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-3"></div> : null}
+                {isUploading ? 'Updating Cloud...' : 'Commit Changes'}
               </button>
             </div>
           </div>
