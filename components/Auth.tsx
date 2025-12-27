@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { User, UserRole } from '../types';
 import { LOGO_ICON } from '../constants';
 
@@ -23,25 +23,33 @@ const Auth: React.FC<Props> = ({ onLogin }) => {
     setLoading(true);
     setError(null);
 
+    // Fix: Use the exported configuration check from lib/supabase.ts
+    // instead of accessing the protected 'supabaseKey' property on the client.
+    if (!isSupabaseConfigured) {
+      setError('System Error: Supabase is not properly configured. Please check environment variables.');
+      setLoading(false);
+      return;
+    }
+
     try {
       if (isLogin) {
-        const { data, error } = await supabase
+        const { data, error: supabaseError } = await supabase
           .from('users')
           .select('*')
           .eq('email', email)
-          .eq('password', password) // In production, use real hashing and auth
+          .eq('password', password)
           .single();
 
-        if (error || !data) throw new Error('Invalid email or password');
+        if (supabaseError || !data) throw new Error('Invalid email or password');
         onLogin(data as User);
       } else {
-        const { data, error } = await supabase
+        const { data, error: supabaseError } = await supabase
           .from('users')
           .insert([{ email, password, name, role }])
           .select()
           .single();
 
-        if (error) throw error;
+        if (supabaseError) throw new Error(supabaseError.message);
         onLogin(data as User);
       }
     } catch (err: any) {
@@ -65,7 +73,7 @@ const Auth: React.FC<Props> = ({ onLogin }) => {
         </p>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg">
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg animate-pulse">
             {error}
           </div>
         )}
